@@ -149,6 +149,7 @@ def main():
         custom_tokens = [
             "<|action_start|>",
             "<|action_end|>",
+            "<use_absolute>",  # Menu cursor target in output-frame pixels
             "<|thought_start|>",
             "<|thought_end|>",
             "LB",
