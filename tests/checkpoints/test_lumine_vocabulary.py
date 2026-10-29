@@ -199,7 +199,7 @@ def _two_rank_load_worker(rank, path, broadcast, endpoint):
         prepare_lumine_vocabulary(expanded, tokenizer())
         # CPU DTensor reproduces pre-sharded FSDP2 parameter placement without
         # requiring a GPU forward/backward or an accelerator allocation.
-        for name in expanded._vocab_expansion_parameters:
+        for name in sorted(expanded._vocab_expansion_parameters):
             parent_name, _, leaf = name.rpartition(".")
             parent = expanded.get_submodule(parent_name)
             parameter = parent._parameters[leaf]
@@ -209,7 +209,7 @@ def _two_rank_load_worker(rank, path, broadcast, endpoint):
         loader = rank0_load_and_broadcast_weights if broadcast else load_model_weights
         loader(expanded, path, init_device="cpu", dtensor_factory=distribute_tensor)
         original = Qwen3ForCausalLM.from_pretrained(path)
-        for name in expanded._vocab_expansion_parameters:
+        for name in sorted(expanded._vocab_expansion_parameters):
             actual = expanded.get_parameter(name).full_tensor()
             source = original.get_parameter(name)
             torch.testing.assert_close(actual[:4], source, rtol=0, atol=0)
