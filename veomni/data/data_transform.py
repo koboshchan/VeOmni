@@ -323,7 +323,28 @@ def _process_sample_qwen_vl_base(
 
     if "images" in sample and sample["images"]:
         images = fetch_images(sample["images"], **kwargs)
-        image_inputs = processor.image_processor(images=images, return_tensors="pt")
+        frame_width = kwargs.get("image_frame_width")
+        frame_height = kwargs.get("image_frame_height")
+        image_processor_kwargs = {}
+        if frame_width is not None or frame_height is not None:
+            from PIL import Image
+
+            if not frame_width or not frame_height:
+                raise ValueError("Both image_frame_width and image_frame_height are required.")
+            factor = processor.image_processor.patch_size * processor.image_processor.merge_size
+            padded_width = ((frame_width + factor - 1) // factor) * factor
+            padded_height = ((frame_height + factor - 1) // factor) * factor
+            padded_images = []
+            for image in images:
+                if image.size != (frame_width, frame_height):
+                    raise ValueError(f"Expected recording frame {(frame_width, frame_height)}, got {image.size}")
+                # Pad only right/bottom, preserving original pixels and action coordinates.
+                padded = Image.new("RGB", (padded_width, padded_height))
+                padded.paste(image, (0, 0))
+                padded_images.append(padded)
+            images = padded_images
+            image_processor_kwargs["do_resize"] = False
+        image_inputs = processor.image_processor(images=images, return_tensors="pt", **image_processor_kwargs)
         image_grid_thw = image_inputs["image_grid_thw"]
         merge_length = processor.image_processor.merge_size**2
         image_token_num = image_grid_thw.prod(dim=-1) // merge_length

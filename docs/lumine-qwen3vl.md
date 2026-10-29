@@ -82,3 +82,12 @@ The configs can be checked on CPU by parsing them with
 nested fields and batching arithmetic without loading model weights or
 starting distributed training. A GPU training smoke test is still required
 before treating them as a validated training recipe.
+
+OBS frames are 1280x720 at 30 FPS, with absolute actions already in that
+coordinate system. All four configs set image_min_pixels and image_max_pixels
+to 921600 and require image_frame_width=1280/image_frame_height=720.
+The image pipeline preserves those pixels exactly, then pads 16 black rows
+at the bottom to meet Qwen3-VL's 32-pixel merged patch grid (1280x736).
+HF resizing is disabled for this mode, so there is no stretching, cropping,
+or coordinate rescaling. Unexpected frame dimensions fail explicitly.
+30 FPS describes recording cadence, not the optional video sampler's fps.

@@ -71,7 +71,8 @@ def test_multiturn_masks_and_explicit_system(tokenizer):
     assert actual["labels"].tolist() == [IGNORE_INDEX] * start + expected[start:]
 
 
-def test_image_data_transform_masks_and_native_parity(tokenizer, tmp_path):
+@pytest.mark.parametrize("recording_frame", [False, True])
+def test_image_data_transform_masks_and_native_parity(tokenizer, tmp_path, recording_frame, monkeypatch):
     from PIL import Image
     from transformers import AutoProcessor
 
@@ -82,6 +83,21 @@ def test_image_data_transform_masks_and_native_parity(tokenizer, tmp_path):
     tokenizer.add_tokens([token for token in LUMINE_CUSTOM_TOKENS if token not in tokenizer.get_vocab()])
     processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-2B-Instruct")
     processor.tokenizer = tokenizer
+    if recording_frame:
+        real_processor = processor.image_processor
+
+        class CheckedProcessor:
+            patch_size = real_processor.patch_size
+            merge_size = real_processor.merge_size
+
+            def __call__(self, images, **kwargs):
+                assert kwargs["do_resize"] is False
+                assert images[0].size == (1280, 736)
+                assert images[0].crop((0, 0, 1280, 720)).getextrema() == ((255, 255), (0, 0), (0, 0))
+                assert images[0].crop((0, 720, 1280, 736)).getextrema() == ((0, 0), (0, 0), (0, 0))
+                return real_processor(images=images, **kwargs)
+
+        monkeypatch.setattr(processor, "image_processor", CheckedProcessor())
     template = Qwen3VLChatTemplate(processor)
     action = "<|action_start|><use_absolute>0 0 0 ; W ;<|action_end|>"
     for token in ("<|action_start|>", "<|action_end|>", "<use_absolute>"):
@@ -91,13 +107,25 @@ def test_image_data_transform_masks_and_native_parity(tokenizer, tmp_path):
         return {"position_ids": torch.arange(kwargs["input_ids"].numel()).view(1, 1, -1)}
 
     image_path = tmp_path / "frame.png"
-    Image.new("RGB", (56, 56)).save(image_path)
+    Image.new("RGB", (1280, 720) if recording_frame else (56, 56), color=(255, 0, 0)).save(image_path)
     sample = {
         "source": "lumine_pretrain",
         "images": [str(image_path)],
         "text": action,
     }
-    output = _process_sample_qwen_vl_base(sample, processor, template, position_ids)[0]
+    kwargs = (
+        dict(image_frame_width=1280, image_frame_height=720, image_min_pixels=921600, image_max_pixels=921600)
+        if recording_frame
+        else {}
+    )
+    output = _process_sample_qwen_vl_base(sample, processor, template, position_ids, **kwargs)[0]
+    if recording_frame:
+        assert output["image_grid_thw"].tolist() == [[1, 46, 80]]
+        assert int(output["image_mask"].sum()) == 920
+        # Native 1280x720 content plus 16 black rows, not a stretched 736px image.
+        patches = output["pixel_values"].reshape(1, 23, 40, 2, 2, 3, 2, 16, 16)
+        assert (patches[..., 0, :, :, :] == 1).any()
+        assert (patches == -1).any()
     count = int(output["image_mask"].sum())
     assert count > 0
     hf = [
