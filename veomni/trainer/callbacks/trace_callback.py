@@ -290,9 +290,26 @@ class TqdmCallback(Callback):
         )
 
     def on_epoch_end(self, state: TrainerState, **kwargs) -> None:
+        if self.data_loader_tqdm.n < self.data_loader_tqdm.total:
+            # Dynamic/iterable datasets can exhaust before the estimated step
+            # count. Show completed batches rather than an unfinished epoch.
+            self.data_loader_tqdm.total = self.data_loader_tqdm.n
+            self.data_loader_tqdm.refresh()
         self.data_loader_tqdm.close()
 
     def on_step_end(self, state: TrainerState, **kwargs) -> None:
-        postfix = ", ".join(f"{k.split('/', 1)[-1]}: {v:.2f}" for k, v in self.trainer.step_train_metrics.items())
-        self.data_loader_tqdm.set_postfix_str(postfix, refresh=False)
+        parts = [
+            f"{k.split('/', 1)[-1]}: {v:.2e}" if k == "training/lr" else f"{k.split('/', 1)[-1]}: {v:.2f}"
+            for k, v in self.trainer.step_train_metrics.items()
+        ]
+        # Reuse the meter's measurements. Do not recompute throughput/MFU or
+        # invent zero-valued GPU measurements when a metric is unavailable.
+        metrics = self.trainer.step_env_metrics
+        if "mfu" in metrics:
+            parts.append(f"mfu: {metrics['mfu']:.2%}")
+        if "tokens_per_second(M)" in metrics:
+            parts.append(f"tokens/s: {metrics['tokens_per_second(M)']:.2f}M")
+        if "max_memory_allocated(GB)" in metrics:
+            parts.append(f"gpu_mem: {metrics['max_memory_allocated(GB)']:.1f}GB")
+        self.data_loader_tqdm.set_postfix_str(", ".join(parts), refresh=False)
         self.data_loader_tqdm.update()

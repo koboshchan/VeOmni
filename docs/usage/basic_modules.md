@@ -594,3 +594,12 @@ remains an error.
 This option supports full tuning, not LoRA or ExtraParallel slice-stream loading.
 Leave it off for stage-one pretraining that intentionally uses the base vocabulary.
 An already expanded checkpoint/tokenizer can be used with the option off.
+
+Lumine's old runtime diagnostics now use the upstream callback architecture.
+The progress bar reads MFU, token throughput, and peak allocated GPU memory from
+the existing environment meter, preserving its distributed accounting and W&B
+logging. It also shows small learning rates in scientific notation and ends at
+the actual completed-batch count if a dataset exhausts early. Dataset setup
+rejects a zero-step schedule with batch-size/data-size guidance rather than
+silently exporting an untrained checkpoint. Verbose fork-specific debug prints
+and the obsolete `tasks/omni/train_qwen_vl.py` loop are intentionally not restored.

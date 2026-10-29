@@ -445,6 +445,12 @@ class BaseTrainer(Stateful, ABC):
             dataset_length = dataset_length / args.model.accelerator.dp_size
         args.compute_train_steps(dataset_length)
         self.train_steps = args.train_steps
+        if self.train_steps <= 0:
+            raise ValueError(
+                "No training steps can be scheduled. Check the dataset size, "
+                "train.dataloader_batch_size/global_batch_size, data.train_sample/train_size, "
+                "and train.max_steps; a mapping dataset must contain at least one full batch."
+            )
 
     def _build_collate_fn(self):
         seq_classification = self.args.data.data_type == "classification"
