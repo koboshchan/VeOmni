@@ -426,6 +426,9 @@ class Qwen2VLTemplate(MultimodalChatTemplate):
         tokenized_example = {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
         tokenized_example = {k: torch.tensor(v) for k, v in tokenized_example.items()}
 
+        return self._remap_vision_tokens(tokenized_example)
+
+    def _remap_vision_tokens(self, tokenized_example):
         # Replace the Qwen image/video pad ids with VeOmni's modality sentinels,
         # which is what process_sample_qwen_vl turns into image_mask / video_mask.
         image_mask = tokenized_example["input_ids"] == self.image_token_id
@@ -493,6 +496,47 @@ CHAT_TEMPLATE_REGISTRY.register("qwen2_5vl", Qwen2VLChatTemplate)
 
 @CHAT_TEMPLATE_REGISTRY.register("qwen3vl")
 class Qwen3VLChatTemplate(Qwen2VLTemplate):
+    def tokenize_messages(self, messages: List[Dict[str, str]]) -> Dict[str, torch.Tensor]:
+        """Use the checkpoint's native template before VeOmni's vision remapping.
+
+        Preserve whitespace and empty turns exactly. Assistant headers are prompts,
+        while the assistant body and its closing im_end/newline are loss targets.
+        """
+        native_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+        input_ids = self.tokenizer.apply_chat_template(
+            native_messages,
+            tokenize=True,
+            return_dict=False,
+            add_generation_prompt=False,
+        )
+        labels = [IGNORE_INDEX] * len(input_ids)
+        for end, message in enumerate(messages, 1):
+            if message["role"] != "assistant" or not message["loss_mask"]:
+                continue
+            prefix = self.tokenizer.apply_chat_template(
+                native_messages[: end - 1],
+                tokenize=True,
+                return_dict=False,
+                add_generation_prompt=True,
+            )
+            completed = self.tokenizer.apply_chat_template(
+                native_messages[:end],
+                tokenize=True,
+                return_dict=False,
+                add_generation_prompt=False,
+            )
+            if input_ids[: len(prefix)] != prefix or input_ids[: len(completed)] != completed:
+                raise ValueError("Qwen3-VL template must preserve assistant message boundaries.")
+            labels[len(prefix) : len(completed)] = input_ids[len(prefix) : len(completed)]
+        return {
+            "input_ids": torch.tensor(input_ids, dtype=torch.long),
+            "attention_mask": torch.ones(len(input_ids), dtype=torch.long),
+            "labels": torch.tensor(labels, dtype=torch.long),
+        }
+
+    def _tokenize_and_remap(self, messages: List[Dict[str, str]]) -> Dict[str, torch.Tensor]:
+        return self._remap_vision_tokens(self.tokenize_messages(messages))
+
     def _calculate_timestamps(self, indices: List[int], video_fps: float, temporal_patch_size: int):
         """
         Replicates Qwen3-VL official logic: Pad -> Convert to Seconds -> Average.

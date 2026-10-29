@@ -275,6 +275,12 @@ class _SpecialTokenTokenizer:
         "<|im_end|>": 6,
     }
 
+    def apply_chat_template(self, messages, tokenize=True, add_generation_prompt=False, return_dict=False):
+        text = "".join("<|im_start|>" + m["role"] + "\n" + m["content"] + "<|im_end|>\n" for m in messages)
+        if add_generation_prompt:
+            text += "<|im_start|>assistant\n"
+        return self.encode(text) if tokenize else text
+
     def convert_tokens_to_ids(self, token):
         return self._SPECIALS[token]
 
@@ -510,7 +516,7 @@ def test_qwen_vl_variants_share_one_tokenize_and_remap():
     # The variants differ only in how they render messages. If a subclass grows
     # its own copy of the tail, a change to the modality contract can land in one
     # and miss the other.
-    assert Qwen3VLChatTemplate._tokenize_and_remap is Qwen2VLChatTemplate._tokenize_and_remap
+    assert Qwen3VLChatTemplate._remap_vision_tokens is Qwen2VLChatTemplate._remap_vision_tokens
 
 
 def test_qwen_vl_variants_render_the_same_ids_for_a_text_only_turn():
