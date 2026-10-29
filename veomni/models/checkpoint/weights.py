@@ -274,8 +274,25 @@ def _dispatch_parameter(
     NOTE: FSDP module must use in-place operators.
     """
     full_param_name = name
+    expandable = name in getattr(module, "_vocab_expansion_parameters", ())
     module, local_name = _find_submodule(module, name)
     orig_tensor = module._parameters[local_name].data
+
+    if expandable and not tensor_is_local_dtensor_shard and tensor.shape != orig_tensor.shape:
+        if (
+            tensor.ndim != 2
+            or orig_tensor.ndim != 2
+            or tensor.shape[1] != orig_tensor.shape[1]
+            or not 0 < tensor.shape[0] < orig_tensor.shape[0]
+        ):
+            raise ValueError(
+                f"Cannot expand vocabulary parameter {full_param_name}: "
+                f"checkpoint shape {tuple(tensor.shape)}, model shape {tuple(orig_tensor.shape)}."
+            )
+        # Fill the full table BEFORE DTensor/FSDP sharding. Copying only a
+        # prefix into an empty shard would leave the new rows uninitialized.
+        extra_rows = tensor.float().mean(dim=0).to(tensor.dtype).expand(orig_tensor.shape[0] - tensor.shape[0], -1)
+        tensor = torch.cat((tensor, extra_rows), dim=0)
 
     # Handle parameter slicing according to parallel_plan, now only ExtraParallel-aware
     if parallel_plan is not None:

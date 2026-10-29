@@ -574,3 +574,23 @@ output = model(**micro_batch)
 logits = output.logits
 loss = loss_func(logits, labels) / len(micro_batches)
 ```
+
+## Lumine action vocabulary
+
+The VLM entry point accepts `model.add_custom_tokens: true` (default `false`).
+This adds the 37 ordinary action/thought/key tokens, including
+`<use_absolute>`, to the processor's tokenizer without changing existing IDs.
+The same tokenizer is used for training and exported with the model.
+
+Vocabulary preparation runs once, before model wrapping and optimizer creation.
+It grows the embedding and output tables only when the tokenizer exceeds their
+existing vocabulary; padded model vocabularies are never shrunk. With meta-init,
+the checkpoint loader copies all original rows and fills appended rows with the
+original table's mean before DTensor sharding. Eager builds use the same mean
+initialization. Only the exact input/output weight parameters opt in to this
+append-only load policy. Shrinking a checkpoint or changing its hidden dimension
+remains an error.
+
+This option supports full tuning, not LoRA or ExtraParallel slice-stream loading.
+Leave it off for stage-one pretraining that intentionally uses the base vocabulary.
+An already expanded checkpoint/tokenizer can be used with the option off.

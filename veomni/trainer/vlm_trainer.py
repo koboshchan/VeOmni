@@ -87,6 +87,10 @@ class VLMMDataArguments(DataArguments):
 
 @dataclass
 class VLMMModelArguments(ModelArguments):
+    add_custom_tokens: bool = field(
+        default=False,
+        metadata={"help": "Add Lumine action tokens and grow vocabulary before wrapping (full tuning only)."},
+    )
     encoder_data_balance: Optional[bool] = field(
         default=False, metadata={"help": "Whether to balance encoder data for qwen3-vl model"}
     )
@@ -123,7 +127,21 @@ class VLMModelRuntime(VeOmniModelRuntime):
             config_kwargs=args.model_config,
         )
         self.model_config = self.model.config
+        if args.add_custom_tokens:
+            if args.lora_config or args.ep_sharded_stream_load:
+                raise ValueError("model.add_custom_tokens requires full tuning without ep_sharded_stream_load.")
+            self._build_model_assets()
+            from ..models.custom_tokens import prepare_lumine_vocabulary
+
+            prepare_lumine_vocabulary(self.model, self.tokenizer)
         self._validate_torch_compile()
+
+    def _build_model_assets(self):
+        # Custom tokens need the same exported tokenizer before FSDP2 wraps the
+        # model. The normal post-wrap call must not reload and discard additions.
+        if not self.__dict__.get("_model_assets_loaded", False):
+            super()._build_model_assets()
+            self._model_assets_loaded = True
 
     def _validate_torch_compile(self):
         accelerator = self.args.accelerator
