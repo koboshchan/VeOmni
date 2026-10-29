@@ -768,3 +768,111 @@ class TestGlobalStateCallbackJobState:
         cb = GlobalStateCallback(trainer)
         assert cb.load_global_state() is None
         assert trainer.state.global_step == 0
+
+
+class TestLatestHfAlias:
+    def _trainer(self, tmp_path):
+        trainer = _make_mock_trainer(save_path=str(tmp_path / "checkpoints"))
+        trainer.args.train.checkpoint.output_dir = str(tmp_path)
+        trainer.args.train.checkpoint.update_latest = True
+
+        def export(state, **kwargs):
+            Path(
+                layout.hf_export_dir(layout.step_dir(trainer.args.train.checkpoint.save_path, state.global_step))
+            ).mkdir(parents=True, exist_ok=True)
+
+        trainer.save_hf_or_lora.side_effect = export
+        return trainer
+
+    def test_atomic_relative_alias_tracks_completed_hf_exports(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        callback = CheckpointCallback(trainer)
+        latest = tmp_path / "hf_ckpt" / "latest"
+        callback._save_hf(TrainerState(global_step=5))
+        assert latest.is_symlink()
+        assert os.readlink(latest) == "../checkpoints/global_step_5/hf_ckpt"
+        assert latest.resolve().is_dir()
+        callback._save_dcp(TrainerState(global_step=6))
+        assert "global_step_5" in os.readlink(latest)
+        callback._save_hf(TrainerState(global_step=10))
+        assert os.readlink(latest) == "../checkpoints/global_step_10/hf_ckpt"
+        assert not list(latest.parent.glob(".latest-*"))
+
+    def test_failed_export_preserves_previous_alias_and_last_step(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        callback = CheckpointCallback(trainer)
+        callback._save_hf(TrainerState(global_step=5))
+        trainer.save_hf_or_lora.side_effect = RuntimeError("export failed")
+        with pytest.raises(RuntimeError, match="export failed"):
+            callback._save_hf(TrainerState(global_step=10))
+        assert "global_step_5" in os.readlink(tmp_path / "hf_ckpt" / "latest")
+        assert callback._last_hf_step == 5
+
+    def test_alias_unchanged_until_atomic_replace_and_cleaned_up_on_failure(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        callback = CheckpointCallback(trainer)
+        callback._save_hf(TrainerState(global_step=5))
+        latest = tmp_path / "hf_ckpt" / "latest"
+
+        def fail_replace(pending, destination):
+            assert os.readlink(latest) == "../checkpoints/global_step_5/hf_ckpt"
+            assert os.readlink(pending) == "../checkpoints/global_step_10/hf_ckpt"
+            raise OSError("rename failed")
+
+        with patch("veomni.trainer.callbacks.checkpoint_callback.os.replace", side_effect=fail_replace):
+            with pytest.raises(OSError, match="rename failed"):
+                callback._save_hf(TrainerState(global_step=10))
+        assert callback._last_hf_step == 5
+        assert "global_step_5" in os.readlink(latest)
+        assert not list(latest.parent.glob(".latest-*"))
+
+    @pytest.mark.parametrize("kind", ["file", "directory"])
+    def test_never_replaces_non_symlink(self, tmp_path, kind):
+        trainer = self._trainer(tmp_path)
+        latest = tmp_path / "hf_ckpt" / "latest"
+        latest.parent.mkdir()
+        if kind == "file":
+            latest.write_text("keep")
+        else:
+            latest.mkdir()
+        callback = CheckpointCallback(trainer)
+        with pytest.raises(FileExistsError, match="non-symlink"):
+            callback._save_hf(TrainerState(global_step=5))
+        assert not latest.is_symlink()
+        assert callback._last_hf_step == -1
+
+    def test_replaces_dangling_symlink(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        latest = tmp_path / "hf_ckpt" / "latest"
+        latest.parent.mkdir()
+        latest.symlink_to("missing")
+        CheckpointCallback(trainer)._save_hf(TrainerState(global_step=5))
+        assert latest.resolve().is_dir()
+
+    @pytest.mark.parametrize("skip_reason", ["disabled", "nonzero_rank", "lora"])
+    def test_skips_alias_when_not_a_rank_zero_full_model_export(self, tmp_path, skip_reason):
+        trainer = self._trainer(tmp_path)
+        if skip_reason == "disabled":
+            trainer.args.train.checkpoint.update_latest = False
+        elif skip_reason == "nonzero_rank":
+            trainer.args.train.global_rank = 1
+        else:
+            trainer.args.model.lora_config = SimpleNamespace()
+        callback = CheckpointCallback(trainer)
+        callback._save_hf(TrainerState(global_step=5))
+        assert not (tmp_path / "hf_ckpt").exists()
+        assert callback._last_hf_step == 5
+
+    def test_missing_export_does_not_publish_dangling_link(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        trainer.save_hf_or_lora.side_effect = None
+        callback = CheckpointCallback(trainer)
+        with pytest.raises(FileNotFoundError, match="HF export directory is missing"):
+            callback._save_hf(TrainerState(global_step=5))
+        assert callback._last_hf_step == -1
+        assert not (tmp_path / "hf_ckpt").exists()
+
+    def test_flag_defaults_off(self):
+        from veomni.arguments import CheckpointConfig
+
+        assert CheckpointConfig().update_latest is False

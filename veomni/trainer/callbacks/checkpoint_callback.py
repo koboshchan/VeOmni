@@ -30,8 +30,12 @@ here. It has its own schedule and its own files, in
 :mod:`~veomni.trainer.callbacks.global_state_callback`.
 """
 
+import os
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ...checkpoint import layout
 from ...utils import helper
 from .base import Callback, TrainerState
 
@@ -55,6 +59,7 @@ class CheckpointCallback(Callback):
         self.save_hf_weights = ckpt.save_hf_weights
         self.hf_every_n_steps = ckpt.hf_save_steps
         self.hf_every_n_epochs = ckpt.hf_save_epochs
+        self.update_latest = getattr(ckpt, "update_latest", False)
         self._last_dcp_step: int = -1
         self._last_hf_step: int = -1
 
@@ -106,7 +111,31 @@ class CheckpointCallback(Callback):
 
     def _save_hf(self, state: TrainerState, stage: str = "step_end"):
         self.trainer.save_hf_or_lora(state, stage=stage)
+        if self.update_latest and self.trainer.args.train.global_rank == 0:
+            self._update_latest_hf(state)
         self._last_hf_step = state.global_step
+
+    def _update_latest_hf(self, state: TrainerState) -> None:
+        # LoRA exports live in lora_ckpt, not hf_ckpt. Never advertise an adapter
+        # as a standalone HF model (including a stale HF export from another run).
+        if self.trainer.args.model.lora_config:
+            return
+        ckpt = self.trainer.args.train.checkpoint
+        target = Path(layout.hf_export_dir(layout.step_dir(ckpt.save_path, state.global_step))).absolute()
+        if not target.is_dir():
+            raise FileNotFoundError(f"Successful HF export directory is missing: {target}")
+        alias_dir = Path(ckpt.output_dir).absolute() / layout.HF_EXPORT_DIRNAME
+        alias_dir.mkdir(parents=True, exist_ok=True)
+        latest = alias_dir / "latest"
+        if latest.exists() and not latest.is_symlink():
+            raise FileExistsError(f"Refusing to replace a non-symlink checkpoint alias: {latest}")
+        # A relative target survives moving the whole output tree. A temporary
+        # sibling and replace keep readers on the previous export until success,
+        # including when latest is an existing dangling symlink.
+        with tempfile.TemporaryDirectory(prefix=".latest-", dir=alias_dir) as temporary:
+            pending = Path(temporary) / "latest"
+            pending.symlink_to(os.path.relpath(target, alias_dir), target_is_directory=True)
+            os.replace(pending, latest)
 
 
 __all__ = ["CheckpointCallback"]

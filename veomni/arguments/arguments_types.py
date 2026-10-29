@@ -1018,6 +1018,10 @@ class CheckpointConfig:
         default=True,
         metadata={"help": "Save the huggingface format weights to the last checkpoint dir."},
     )
+    update_latest: bool = field(
+        default=False,
+        metadata={"help": "Atomically point output_dir/hf_ckpt/latest at each successful full-model HF export."},
+    )
 
     def __post_init__(self):
         """Reject a save configuration that cannot do what it says.

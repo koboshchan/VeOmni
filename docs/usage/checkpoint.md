@@ -240,3 +240,21 @@ resume instead of falling back.
 - [Checkpoint conversion](checkpoint_conversion.md) — DCP shards → HuggingFace safetensors (`scripts/merge_dcp_to_hf.py`).
 - [Trainer callbacks](trainer.md#callbacks) — `CheckpointCallback` (when) vs `GlobalStateCallback` (job cursor).
 - [LoRA checkpoints](../key_features/lora.md#4-checkpoint-saving) — adapter export under `lora_ckpt/`.
+
+## Latest full-model HF export
+
+Set `train.checkpoint.update_latest: true` to maintain
+`<output_dir>/hf_ckpt/latest` as a relative symlink to the last successfully
+exported `<output_dir>/checkpoints/global_step_N/hf_ckpt` directory.
+It is off by default and only rank 0 changes it, after the export returns
+successfully on all ranks. The previous link stays in place while a new export
+is being written or if that export fails. Publication uses an atomic rename and
+never replaces a regular file or directory named `latest`.
+
+The alias is for inference, not DCP resume. A DCP-only save does not advance it,
+and LoRA exports do not create an HF alias. For multi-module HF exports it points
+at the export root; select the model's subdirectory when loading it. Leave
+`hf_save_steps` and `hf_save_epochs` at zero for upstream's final-only HF export.
+The checkpoint manager already exports all full-model parameters (not just the
+trainable subset) and drains pending asynchronous DCP saves before HF export;
+the old Lumine trainer and standalone merge script are not needed for that path.
