@@ -1,0 +1,57 @@
+# Lumine stage 2: instruct, Qwen3-VL-2B-Instruct.
+# Launch from the Lumine repository so configs/data_instruct.yaml resolves.
+model:
+  model_path: output/lumine_stage1_pretrain_qwen3vl_2b/hf_ckpt/latest
+  chat_template: qwen3vl
+  add_custom_tokens: true
+  ops_implementation:
+    attn_implementation: flash_attention_2
+  optimizer:
+    lr: 5.0e-06
+    lr_decay_style: cosine
+  accelerator:
+    init_device: meta
+    ulysses_size: 1
+    gradient_checkpointing:
+      enable: true
+      enable_reentrant: false
+    fsdp_config:
+      fsdp_mode: fsdp2
+
+data:
+  train_path: configs/data_instruct.yaml
+  data_type: conversation
+  datasets_type: mapping
+  max_seq_len: 8192
+  # Packed-token budget per epoch, not a sample count. Tune for the prepared data.
+  train_size: 32000000
+  dataloader:
+    num_workers: 2
+    drop_last: false
+  mm_configs:
+    image_max_pixels: 262144
+    video_max_pixels: 262144
+    # Qwen3-VL dynamic video budget, matching the upstream Qwen3-VL example.
+    video_total_pixels: 5780275
+    max_frames: 8
+    fps: 2.0
+    use_audio_in_video: false
+
+train:
+  dyn_bsz: true
+  freeze_vit: false
+  num_train_epochs: 3
+  micro_batch_size: 1
+  global_batch_size: 8
+  wandb:
+    enable: false
+    project: lumine
+    name: lumine_stage2_instruct_qwen3vl_2b
+  checkpoint:
+    output_dir: output/lumine_stage2_instruct_qwen3vl_2b
+    manager: dcp
+    save_steps: 0
+    save_epochs: 1
+    save_hf_weights: true
+    hf_save_epochs: 1
+    update_latest: true
