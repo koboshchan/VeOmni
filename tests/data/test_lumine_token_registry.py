@@ -97,9 +97,9 @@ def tokenizers():
 @pytest.mark.parametrize(
     "action",
     [
-        "<|action_start|><use_absolute>0 1279 719 ; W A ; LB RB MB ; zero one two three four five six seven eight nine ; One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve ; Esc Tab Caps Shift Ctrl Alt Space ;<|action_end|>",
-        "<|thought_start|>keep moving<|thought_end|><|action_start|>1 -23 45 ; W ; LB ; ; ; ; ;<|action_end|>",
-        "<|action_start|>0 0 0 ; ; ; ; ; ; ;<|action_end|>",
+        "<|action_start|><use_absolute> 1279 719 5 ; W A LB ; RB MB ; One Two Three Four ; Five Six Seven Eight ; Nine Ten Eleven Twelve ; Shift Space<|action_end|>",
+        "<|action_start|>-995 996 -5 ; zero one two three ; four five six seven ; eight nine ; Esc Tab Caps ; Ctrl Shift ; Alt Space<|action_end|>",
+        "<|action_start|>0 0 0 ; ; ; ; ; ;<|action_end|>",
     ],
 )
 def test_trained_action_and_full_chat_ids_unchanged(tokenizers, action):
@@ -129,8 +129,19 @@ def test_saved_training_tokenizer_matches_registry(tokenizers):
     saved = AutoTokenizer.from_pretrained(source)
     assert saved.get_vocab() == current.get_vocab()
     assert saved.chat_template == current.chat_template
-    action = "<|action_start|><use_absolute>0 1279 719 ; W A ; LB ; Eleven Twelve ; ; ; ;<|action_end|>"
-    messages = [{"role": "user", "content": "frame"}, {"role": "assistant", "content": action}]
+    action = "<|action_start|><use_absolute> 1279 719 0 ; W A ; LB ; Eleven Twelve ; ; ;<|action_end|>"
+    messages = [
+        {"role": "user", "content": "<|vision_start|><|image_pad|><|vision_end|>"},
+        {"role": "assistant", "content": action},
+    ]
     assert saved.apply_chat_template(messages, tokenize=True, return_dict=False) == current.apply_chat_template(
         messages, tokenize=True, return_dict=False
     )
+
+
+def test_thought_markers_are_lexical_only(tokenizers):
+    original, current = tokenizers
+    for marker in ("<|thought_start|>", "<|thought_end|>"):
+        ids = current.encode(marker, add_special_tokens=False)
+        assert ids == original.encode(marker, add_special_tokens=False)
+        assert ids == [current.convert_tokens_to_ids(marker)]
