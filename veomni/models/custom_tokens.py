@@ -3,44 +3,16 @@
 import torch
 
 
+# Only entries absent from the base Qwen vocabulary belong here. Keep ordinary
+# key words and action whitespace unchanged to preserve trained tokenization.
 LUMINE_CUSTOM_TOKENS = (
     "<|action_start|>",
     "<|action_end|>",
     "<use_absolute>",
     "<|thought_start|>",
     "<|thought_end|>",
-    "LB",
-    "RB",
-    "MB",
-    "zero",
-    "one",
-    "two",
-    "three",
-    "four",
-    "five",
-    "six",
-    "seven",
-    "eight",
-    "nine",
-    "One",
-    "Two",
-    "Three",
-    "Four",
-    "Five",
-    "Six",
-    "Seven",
-    "Eight",
-    "Nine",
-    "Ten",
     "Eleven",
     "Twelve",
-    "Esc",
-    "Tab",
-    "Caps",
-    "Shift",
-    "Ctrl",
-    "Alt",
-    "Space",
 )
 
 
