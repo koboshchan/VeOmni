@@ -8,7 +8,7 @@ import torch
 LUMINE_CUSTOM_TOKENS = (
     "<|action_start|>",
     "<|action_end|>",
-    "<use_absolute>",
+    "<|use_abs|>",
     "<|thought_start|>",
     "<|thought_end|>",
     "Eleven",

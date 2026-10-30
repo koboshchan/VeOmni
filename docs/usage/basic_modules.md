@@ -579,7 +579,7 @@ loss = loss_func(logits, labels) / len(micro_batches)
 
 The VLM entry point accepts `model.add_custom_tokens: true` (default `false`).
 This adds the 37 ordinary action/thought/key tokens, including
-`<use_absolute>`, to the processor's tokenizer without changing existing IDs.
+`<|use_abs|>`, to the processor's tokenizer without changing existing IDs.
 The same tokenizer is used for training and exported with the model.
 
 Vocabulary preparation runs once, before model wrapping and optimizer creation.

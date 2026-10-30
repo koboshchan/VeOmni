@@ -11,7 +11,7 @@ turn. It does not wrap it in think tags or supervise hidden reasoning.
 Use this fork's updated runtime, not an unmodified upstream installation.
 `model.add_custom_tokens: true` keeps the action-token vocabulary enabled in
 every stage, including knowledge injection, so later exports retain it. Only seven
-entries are new to Qwen: `<|action_start|>`, `<|action_end|>`, `<use_absolute>`,
+entries are new to Qwen: `<|action_start|>`, `<|action_end|>`, `<|use_abs|>`,
 `<|thought_start|>`, `<|thought_end|>`, `Eleven`, and `Twelve`, in that order.
 Existing key words stay in the base vocabulary; action whitespace, ordinary
 leading-space BPE, and numeric mouse coordinates are unchanged. This registry

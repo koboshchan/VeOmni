@@ -24,7 +24,7 @@ _spec.loader.exec_module(_registry)
 _TRAINED_REGISTRY = (
     "<|action_start|>",
     "<|action_end|>",
-    "<use_absolute>",
+    "<|use_abs|>",
     "<|thought_start|>",
     "<|thought_end|>",
     "LB",
@@ -63,7 +63,7 @@ _TRAINED_REGISTRY = (
 _NEW_TOKENS = (
     "<|action_start|>",
     "<|action_end|>",
-    "<use_absolute>",
+    "<|use_abs|>",
     "<|thought_start|>",
     "<|thought_end|>",
     "Eleven",
@@ -97,7 +97,7 @@ def tokenizers():
 @pytest.mark.parametrize(
     "action",
     [
-        "<|action_start|><use_absolute> 1279 719 5 ; W A LB ; RB MB ; One Two Three Four ; Five Six Seven Eight ; Nine Ten Eleven Twelve ; Shift Space<|action_end|>",
+        "<|action_start|><|use_abs|> 1279 719 5 ; W A LB ; RB MB ; One Two Three Four ; Five Six Seven Eight ; Nine Ten Eleven Twelve ; Shift Space<|action_end|>",
         "<|action_start|>-995 996 -5 ; zero one two three ; four five six seven ; eight nine ; Esc Tab Caps ; Ctrl Shift ; Alt Space<|action_end|>",
         "<|action_start|>0 0 0 ; ; ; ; ; ;<|action_end|>",
     ],
@@ -129,7 +129,7 @@ def test_saved_training_tokenizer_matches_registry(tokenizers):
     saved = AutoTokenizer.from_pretrained(source)
     assert saved.get_vocab() == current.get_vocab()
     assert saved.chat_template == current.chat_template
-    action = "<|action_start|><use_absolute> 1279 719 0 ; W A ; LB ; Eleven Twelve ; ; ;<|action_end|>"
+    action = "<|action_start|><|use_abs|> 1279 719 0 ; W A ; LB ; Eleven Twelve ; ; ;<|action_end|>"
     messages = [
         {"role": "user", "content": "<|vision_start|><|image_pad|><|vision_end|>"},
         {"role": "assistant", "content": action},

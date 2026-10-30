@@ -15,13 +15,9 @@ def tokenizer():
     return AutoTokenizer.from_pretrained("Qwen/Qwen3-VL-2B-Instruct")
 
 
-@pytest.mark.parametrize(
-    "action", ["<|action_start|><use_absolute>0 0 0 ; W A ; ; ; ; ; ;<|action_end|>", "  W A  ", ""]
-)
+@pytest.mark.parametrize("action", ["<|action_start|><|use_abs|>0 0 0 ; W A ; ; ; ; ; ;<|action_end|>", "  W A  ", ""])
 def test_native_ids_and_assistant_loss(tokenizer, action):
-    tokenizer.add_special_tokens(
-        {"additional_special_tokens": ["<|action_start|>", "<|action_end|>", "<use_absolute>"]}
-    )
+    tokenizer.add_special_tokens({"additional_special_tokens": ["<|action_start|>", "<|action_end|>", "<|use_abs|>"]})
     template = Qwen3VLChatTemplate(SimpleNamespace(tokenizer=tokenizer))
     image = "<|vision_start|><|image_pad|><|vision_end|>"
     messages = [
@@ -99,8 +95,8 @@ def test_image_data_transform_masks_and_native_parity(tokenizer, tmp_path, recor
 
         monkeypatch.setattr(processor, "image_processor", CheckedProcessor())
     template = Qwen3VLChatTemplate(processor)
-    action = "<|action_start|><use_absolute>0 0 0 ; W ;<|action_end|>"
-    for token in ("<|action_start|>", "<|action_end|>", "<use_absolute>"):
+    action = "<|action_start|><|use_abs|>0 0 0 ; W ;<|action_end|>"
+    for token in ("<|action_start|>", "<|action_end|>", "<|use_abs|>"):
         assert len(tokenizer.encode(token, add_special_tokens=False)) == 1
 
     def position_ids(**kwargs):
